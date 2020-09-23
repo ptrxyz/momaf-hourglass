@@ -1,15 +1,22 @@
 #!/usr/bin/env python3
 import json
+import traceback
 from redis import Redis
 from flask import Flask
 from flask import request
 from datetime import datetime
+import time
 from pkmap import Map
 
 import re
 
 app = Flask(__name__)
 app.r = Redis(host='localhost', port=6379, db=0)
+
+
+def timestamp():
+    return str(time.time())
+    return datetime.now().strftime("%s")
 
 
 def pprint(j):
@@ -28,7 +35,11 @@ def default():
 
 pattern_left = re.compile(r"^(?P<this>\w+)$")
 pattern_right = re.compile(
-    r"^(?P<that>\w+\.\d+)\.(?P<field>\w+)($|(\@(?P<at>(latest|ref|\d+)$)|$))", re.MULTILINE)
+    r"^(?P<that>\w+\.\d+)\.(?P<field>\w+)($|(\@(?P<at>(latest|ref|\d+)$)|$))",
+    re.MULTILINE)
+replacement_pattern = re.compile(
+    r"^(?P<table>\w+)\.(?P<id>\*)\.(?P<property>(\w+|\*))($|(\@(?P<at>(latest|ref|"
+    r"(?P<number>(\d+\.\d+)|(\d+)))$)|$))", re.MULTILINE)
 
 
 class SyntaxError(Exception):
@@ -49,12 +60,14 @@ def create_join_table(d):
     """
     res = {}
     for k, v in d.items():
-        m1 = pattern_left.match(k)
-        m2 = pattern_right.match(v)
-        if m1 and m2:
-            res[k] = (m2.group("that"), m2.group("at"))
+        rplcmnt = replacement_pattern.match(str(v))
+        if rplcmnt:
+            res[k] = Map(table=rplcmnt.group("table"),
+                         rowid=rplcmnt.group("id"),
+                         property=rplcmnt.group("property"),
+                         at=rplcmnt.group("at"))
         else:
-            blame = f"Key Error: {k}" if not m1 else f"Value Error: {v}"
+            blame = f"Value Error: {v}"
             raise Exception(blame)
     return res
 
@@ -98,13 +111,14 @@ def log_action(table, id, request, action):
         return ("Empty payload.", 400)
 
     qname = f"{data.table}.{data.id}"
-    app.r.rpush(
-        qname,
-        json.dumps({
-            "action": action,
-            "timestamp": datetime.now().strftime("%s"),
-            "params": data.payload
-        }))
+    ts = timestamp()
+    jsn = json.dumps({
+        "action": action,
+        "timestamp": ts,
+        "params": data.payload
+    })
+    print(jsn)
+    app.r.zadd(qname, {jsn: ts})
     return ("OK", 200)
 
 
@@ -115,23 +129,39 @@ def get_object(table, id, full_history=True, join=None):
         return ("Does not seem to be valid JSON in the correct format.", 500)
 
     qname = f"{data.table}.{data.id}"
-    payload = app.r.lrange(qname, 0, -1)
+    payload = app.r.zrange(qname, 0, -1)
+    print("Payload:", payload)
     history = [Map(json.loads(x.decode("utf-8"))) for x in payload]
     reconstruction = reconstruct(history)
-
+    print(reconstruction)
     if join:
         rr = Map(reconstruction)
         replacements = set(join.keys()) & set(rr.keys())
         print(replacements)
-        for k in replacements:
-            print(k, join[k])
-            print(f"{k} is to be replace by {join[k]}")
-            __p = app.r.lrange(join[k][0], 0, -1)
+        for rkey, rjoin in [(x, join[x]) for x in replacements]:
+            print(rkey, rjoin)
+            target = f"{rjoin.table}.{rr[rkey]}"
+            print(f"{rkey} is to be replace by {target}")
+
+            limit = rjoin.at
+            if limit == "latest":
+                __p = app.r.zrangebyscore(target, "-inf", timestamp())
+            elif limit == "ref":
+                __p = app.r.zrangebyscore(
+                    target, "-inf", history[-1].timestamp)
+            else:
+                __p = app.r.zrangebyscore(target, "-inf", limit)
+
             __h = [Map(json.loads(x.decode("utf-8"))) for x in __p]
-            right_obj = reconstruct(__h)
-            print("reconstruction: ", right_obj)
-            right_obj["__refering_to"] = join[k][0]
-            reconstruction[k] = right_obj
+            robj = reconstruct(__h)
+            print("reconstruction: ", robj)
+            if rjoin.property == "*":
+                reconstruction[rkey] = robj
+            elif rjoin.property in robj:
+                reconstruction[rkey] = robj[rjoin.property]
+            else:
+                raise Exception(
+                    f"Can not find property {rjoin.property} on target.")
         pass
 
     pprint(reconstruction)
@@ -172,7 +202,14 @@ def history(table, id):
 
 @ app.route('/get/<table>/<int:id>', methods=["GET"])
 def get(table, id):
-    # ?join={"table.id.field":"table.id.field@latest", "table.id.field":"table.id.field@reference"}
+    # Does now accept conversion table to replace a property
+    # with an object it's refering to. Done via HTTP parameter
+    # (as of Sep. 23, <id> has to *. This might change in the future.)
+    # ?join={
+    #   "property":"table.id.field@latest",
+    #   "property":"table.id.field@ref",
+    #   "property":"table.id.field@1600873171.819429"
+    # }
     join = request.args.get("join")
     print(join)
     if join:
@@ -186,6 +223,8 @@ def get(table, id):
             elif type(ex) == SyntaxError:
                 return (f"Syntax Error: {ex}", 400)
             else:
+                print(ex)
+                print(traceback.format_exc())
                 return (f"General Error: {ex}", 400)
 
     return get_object(table, id, full_history=False, join=join)
