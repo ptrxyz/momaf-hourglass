@@ -1,5 +1,6 @@
 from flask import Flask
 from redis import Redis
+from .pkmap import Map
 
 
 class Hourglass():
@@ -14,9 +15,9 @@ class Hourglass():
 
 
 def create_app():
-    hourglass = Hourglass({
+    hourglass = Hourglass(Map({
         "prefix": "data"
-    })
+    }))
 
     @hourglass.flask.route('/')
     def default():

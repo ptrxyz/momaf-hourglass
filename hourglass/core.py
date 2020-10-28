@@ -9,7 +9,7 @@ api = API('core_api')
 def write(entry):
     serialized = json.dumps(entry)
     # ZADDs signature is (key_name, {data: score})
-    api.redis.zadd(f"{api.c.prefix}.{entry.key}",
+    api.redis.zadd(f"{entry.key}",
                    {serialized: entry.timestamp})
 
 
@@ -25,7 +25,7 @@ def set_element(table, id):
         return reply.NOT_JSON
     else:
         action = "INSERT" if request.method == "POST" else "UPDATE"
-        entry = Map(key=f"{table}.{id}",
+        entry = Map(key=f"{api.config.prefix}.{table}.{id}",
                     action=action,
                     timestamp=timestamp(),
                     payload=payload)
