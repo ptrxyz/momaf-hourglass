@@ -3,4 +3,36 @@
 @host = {{hostname}}:{{port}}
 @contentType = application/json
 
-http://127.0.0.1:5000/
+###
+http://{{host}}/
+
+### 
+http://{{host}}/dev
+
+###
+POST http://{{host}}/dev/test_json
+Content-Type: application/json
+
+{
+    "key": "value"
+}
+
+###
+GET http://{{host}}/dev/keys/debug
+
+###
+POST http://{{host}}/table/1
+Location: something
+Content-Type: application/json
+
+{ "key": "value1" }
+
+###
+PUT http://{{host}}/table/1
+Content-Type: application/json
+
+{"key": "value2";}
+
+
+###
+GET http://{{host}}/table/1/latest
