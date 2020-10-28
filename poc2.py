@@ -38,8 +38,8 @@ pattern_right = re.compile(
     r"^(?P<that>\w+\.\d+)\.(?P<field>\w+)($|(\@(?P<at>(latest|ref|\d+)$)|$))",
     re.MULTILINE)
 replacement_pattern = re.compile(
-    r"^(?P<table>\w+)\.(?P<id>\*)\.(?P<property>(\w+|\*))($|(\@(?P<at>(latest|ref|"
-    r"(?P<number>(\d+\.\d+)|(\d+)))$)|$))", re.MULTILINE)
+    r"^(?P<table>\w+)\.(?P<id>\*)\.(?P<property>(\w+|\*))($|(\@(?P<at>"
+    r"(latest|ref|(?P<number>(\d+\.\d+)|(\d+)))$)|$))", re.MULTILINE)
 
 
 class SyntaxError(Exception):
@@ -180,27 +180,27 @@ def get_object(table, id, full_history=True, join=None):
         }), 200)
 
 
-@ app.route('/delete/<table>/<int:id>', methods=["POST"])
+@app.route('/delete/<table>/<int:id>', methods=["POST"])
 def delete(table, id):
     return log_action(table, id, request, action="delete")
 
 
-@ app.route('/update/<table>/<int:id>', methods=["POST"])
+@app.route('/update/<table>/<int:id>', methods=["POST"])
 def update(table, id):
     return log_action(table, id, request, action="update")
 
 
-@ app.route('/insert/<table>/<int:id>', methods=["POST"])
+@app.route('/insert/<table>/<int:id>', methods=["POST"])
 def insert(table, id):
     return log_action(table, id, request, action="insert")
 
 
-@ app.route('/history/<table>/<int:id>', methods=["GET"])
+@app.route('/history/<table>/<int:id>', methods=["GET"])
 def history(table, id):
     return get_object(table, id, full_history=True)
 
 
-@ app.route('/get/<table>/<int:id>', methods=["GET"])
+@app.route('/get/<table>/<int:id>', methods=["GET"])
 def get(table, id):
     # Does now accept conversion table to replace a property
     # with an object it's refering to. Done via HTTP parameter
