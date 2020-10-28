@@ -1,0 +1,6 @@
+@hostname = 127.0.0.1
+@port = 5000
+@host = {{hostname}}:{{port}}
+@contentType = application/json
+
+http://127.0.0.1:5000/
